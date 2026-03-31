@@ -1,3 +1,8 @@
+---
+name: audos-platform
+description: "Audos platform development — working with Audos workspaces, server functions (hooks), database tables, or any API at audos.com/api/hooks/execute/. TRIGGER when: user is working in an audos-workspace/ folder, calling Audos APIs, building or modifying server functions, asking about db/platform/fetch runtime, or developing apps on the Audos platform. DO NOT TRIGGER for: general React/TypeScript work unrelated to Audos platform integration."
+---
+
 # Audos Platform Skill
 
 You are working inside an **Audos workspace** — a managed no-code/low-code platform that provides a hosted backend (PostgreSQL, React runtime, AI, email, storage, CRM, analytics) accessible via custom HTTP server functions called "hooks".
