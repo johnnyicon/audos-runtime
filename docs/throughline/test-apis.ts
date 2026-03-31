@@ -1,9 +1,9 @@
 /**
- * Audos Runtime API — Quick Test Script
+ * Throughline API — Quick Test Script
  * Verifies all APIs are reachable and returning expected responses.
  *
  * Usage:
- *   bun run docs/audos-api/test-apis.ts
+ *   bun run docs/throughline/test-apis.ts
  */
 
 const BASE = "https://audos.com/api/hooks/execute/workspace-351699";
@@ -18,12 +18,12 @@ async function post(endpoint: string, body: object) {
 }
 
 // 1. DATABASE: List tables
-console.log("1. Testing Database API...");
+console.log("1. Testing Database API (list-tables)...");
 const tables = await post("db-api", { action: "list-tables" });
 console.log(`   Found ${(tables.tables ?? []).length} tables`);
 
-// 2. DATABASE: Insert a test record (title is required)
-console.log("2. Inserting test record...");
+// 2. DATABASE: Insert a test record
+console.log("2. Testing Database API (insert)...");
 const insert = await post("db-api", {
   action: "insert",
   table: "dashboard_activity",
@@ -34,7 +34,7 @@ const insert = await post("db-api", {
     metadata: { source: "off-platform", test: true },
   },
 });
-console.log(`   Insert result:`, insert);
+console.log(`   Inserted id: ${insert.data?.insertedRows?.[0]?.id ?? "ERROR"}`);
 
 // 3. AI: Generate a short post
 console.log("3. Testing AI API...");
@@ -53,16 +53,32 @@ console.log(`   Found ${(crm.contacts ?? []).length} contacts`);
 // 5. ANALYTICS: Get overview
 console.log("5. Testing Analytics API...");
 const analytics = await post("analytics-api", { action: "overview", days: 7 });
-console.log(`   Analytics:`, analytics);
+console.log(`   Total contacts: ${analytics.metrics?.totalContacts ?? "ERROR"}, conversion: ${analytics.metrics?.conversionRate ?? "ERROR"}`);
 
-// 6. WEB: Fetch a page
-console.log("6. Testing Web API...");
-const web = await post("web-api", {
+// 6. WEB: fetch (expects isJsRendered flag on SPA)
+console.log("6. Testing Web API (fetch)...");
+const webFetch = await post("web-api", {
   action: "fetch",
   url: "https://www.trythroughline.com/",
 });
-console.log(`   Title: ${web.title ?? "ERROR"}`);
-console.log(`   Content length: ${web.contentLength ?? 0} chars (raw: ${web.rawLength ?? 0})`);
+console.log(`   Title: ${webFetch.title ?? "ERROR"}, isJsRendered: ${webFetch.isJsRendered}`);
+if (webFetch.warning) console.log(`   ⚠️  ${webFetch.warning}`);
 
+// 7. WEB: metadata (works even on SPAs)
+console.log("7. Testing Web API (metadata)...");
+const webMeta = await post("web-api", {
+  action: "metadata",
+  url: "https://www.trythroughline.com/",
+});
+console.log(`   OG title: ${webMeta.openGraph?.["og:title"] ?? webMeta.title ?? "ERROR"}`);
+
+// 8. WEB: analyze (guest research)
+console.log("8. Testing Web API (analyze)...");
+const webAnalyze = await post("web-api", {
+  action: "analyze",
+  url: "https://en.wikipedia.org/wiki/Podcasting",
+});
+console.log(`   Research title: ${webAnalyze.research?.title ?? "ERROR"}`);
+console.log(`   Key topics: ${(webAnalyze.research?.keyTopics ?? []).join(", ") || "none"}`);
 
 console.log("\n✅ All API tests complete!");
