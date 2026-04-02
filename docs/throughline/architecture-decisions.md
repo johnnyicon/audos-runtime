@@ -125,21 +125,57 @@ Live test passed. App running at workspace-351699 as `apps/throughline/App.tsx`.
 
 ---
 
-## Confirmed: New Apps Require Otto Registration
+## Confirmed: New Apps Require Otto — 3-Step Process (SDK-10)
 
-**Adding a new app to config.json via GitHub push does NOT create a dock entry.**
+**GitHub sync alone is NOT sufficient to make a new app appear in the dock.**
 
-The Audos platform maintains its own app registry (DB records). The `apps` array in config.json maps app IDs to component files — but the platform must have a matching DB record for the app to appear in the dock. That record must be created via Otto.
+Full details in `SDK-10-GITHUB-SYNC-NEW-APP-INVESTIGATION.md`.
 
-**Workflow for adding a new app:**
-1. Add the entry to `config.json` (so the platform knows the component path)
-2. Create the `App.tsx` file in `audos-workspace/apps/<id>/`
-3. Push to GitHub (triggers sync + recompile)
-4. Ask Otto to register the app record in the platform DB
+### The Pipeline
 
-Nick has partially automated the sync, but step 4 still requires Otto. This may change in future platform updates.
+There are TWO codebases on the platform, not one:
 
-Existing apps (home, briefing, signature, studio, setup) were registered when the workspace was initialized — no manual step required for them.
+| Location | Contains | Updated by |
+|----------|----------|-----------|
+| `apps/{appId}/App.tsx` | Raw source (TypeScript/TSX) | GitHub sync ✅ |
+| `.published-source/apps/{appId}/App.tsx` | Compiled bundle | Platform bundler only |
+
+`Desktop.tsx` loads apps from `.published-source/`, not from source. GitHub sync updates source but never triggers the bundler for new apps. If `.published-source/apps/{appId}/` doesn't exist, the app is invisible regardless of what config.json says.
+
+### "Ghost App" State
+
+After a GitHub push that adds a new app, the app is in a **ghost state**:
+- ✅ Listed in config.json
+- ✅ Source file exists at `apps/{appId}/App.tsx`
+- ❌ No compiled bundle at `.published-source/apps/{appId}/`
+- ❌ Not visible in dock
+
+`recompile` and `delegate_app_edit` on a ghost app both silently succeed but don't create the bundle.
+
+### Correct Procedure for New Apps
+
+Ask Otto to:
+```
+1. delete_app(appId: "{id}")                         — remove ghost
+2. delegate_app_edit(appId: "new", ...)              — creates compiled bundle
+3. publish_draft(target: "app", appId: "{id}")       — promotes draft to live
+```
+
+### For Coding Assistants
+
+After pushing a new app via GitHub, tell the user:
+> "I've added the config and source. Please ask Otto to publish the new [app name] app — the platform needs to compile and deploy it."
+
+Do NOT assume it will appear automatically.
+
+### What GitHub Sync Does Handle (Improved)
+
+For **existing** apps (ones already with a compiled bundle):
+- Config.json changes ✅
+- Source file updates ✅
+- Recompile picks up changes ✅
+
+The GitHub → dock gap only affects **new** app entries.
 
 ---
 
