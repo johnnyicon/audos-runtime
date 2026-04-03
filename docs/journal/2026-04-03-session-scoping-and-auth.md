@@ -44,11 +44,13 @@ Separate workspaces per org is not the right model for Throughline. `user_id` + 
 ## What Changed in Code
 
 - `identity.ts`: Fixed `window.__spaceContext?.username` (was `window.useSubscription?.()?.email`)
+- `audos-config.ts`: Added `DB_API_KEY` constant
+- `audos-api.ts`: `callHook` now sends `x-api-key` header on all `db-api` calls
+- `setup/App.tsx`, `briefing/App.tsx`: Direct `DB_URL` fetch calls updated to include `x-api-key` header
 
 ---
 
 ## What's Still Pending (as of this session)
 
-- [ ] Ask Otto to add API key validation to the `db-api` hook
 - [ ] Migrate app reads from direct REST fetch to `useWorkspaceDB` with `shared: true` + `org_id` filter
-- [ ] Create `useOrgDB` wrapper hook as recommended in SDK-13
+- [ ] Create `useOrgDB` wrapper hook as recommended in the database FAQ Otto produced
