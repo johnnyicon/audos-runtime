@@ -1,0 +1,50 @@
+version: '3.8'
+
+# Local PostgreSQL for Throughline development
+# Mirrors the Audos platform's PostgreSQL setup
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: throughline_postgres
+    environment:
+      POSTGRES_DB: throughline_dev
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Auto-apply migrations on first run (optional)
+      # - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d throughline_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: pgAdmin for GUI access
+  # Uncomment if you prefer a visual database tool
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: throughline_pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@throughline.local
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - db
+
+volumes:
+  pgdata:
+    name: throughline_pgdata
+
+# Usage:
+# ------
+# Start:     docker-compose up -d
+# Stop:      docker-compose down
+# Reset:     docker-compose down -v && docker-compose up -d
+# Logs:      docker-compose logs -f db
+# Connect:   docker exec -it throughline_postgres psql -U dev -d throughline_dev
