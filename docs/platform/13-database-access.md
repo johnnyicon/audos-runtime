@@ -91,3 +91,31 @@ Assuming the feature works once unblocked:
 - Audos workspace schema (claimed): `ws_351699`
 - AI hook endpoint (working): `https://audos.com/api/hooks/execute/workspace-351699/ai-api`
 - Database access endpoint (unknown — to be captured from DevTools)
+
+## Schema discovery (2026-04-16, connection verified)
+
+Connection successful to DigitalOcean-hosted Postgres. Schema `ws_8f1ad824_832f_4af8_b77e_ab931a250625` contains 20 tables with `app_` prefix convention. 22 total rows across the workspace.
+
+### Tables with data
+
+| Table | Rows | Key columns |
+|---|---|---|
+| `app_outreach_leads` | 11 | name, email, linkedin_url, relevance_score, ai_reason, status, outreach_batch_id |
+| `app_speakers` | 3 | name, role, is_recurring, voice_profile_id |
+| `app_voice_profiles` | 2 | name, type, sample_count, is_trained, long_form_samples (jsonb) |
+| `app_dashboard_activity` | 2 | activity_type, title, description, metadata (jsonb) |
+| `app_linked_references` | 2 | url, title, content, content_length, fetched_at |
+| `app_guest_prep_podcast_profiles` | 1 | podcast_name, target_audience, style, tone, brand_voice, themes_goals |
+| `app_reels` | 1 | title, transcript, video_url, guest_name |
+
+### Empty tables (schema exists, no data)
+
+app_briefing_podcast_profiles, app_briefing_research_sessions, app_briefing_ros_versions, app_generated_captions, app_guest_prep_research_sessions, app_guest_prep_ros_versions, app_podcast_setup_profiles, app_reel_captions, app_studio_content, app_studio_episodes, app_studio_generated_content, app_studio_time_tracking, app_voice_refinements
+
+### Observations
+
+- Audos has its OWN data model that mirrors some of what throughline-daemon stores (podcast profiles, research sessions, voice profiles, reels/captions). The two systems have overlapping schemas.
+- `app_outreach_leads` has 11 rows with relevance_score + ai_reason — this is a CRM-like surface that Audos already models. Worth understanding whether the Throughline `contacts` table should sync from or merge with this.
+- All tables use `session_id` (text) which ties data to the Audos workspace session. Most also have `user_id` + `org_id` for multi-tenancy.
+- Schema uses UUIDs for relational FKs (voice_profile_id, research_session_id, episode_id, etc.) and jsonb for flexible fields (metadata, long_form_samples, learned_patterns).
+- Connection credentials stored in Audos Developer panel (Generate Credentials), NOT in this file.
