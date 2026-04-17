@@ -1,64 +1,70 @@
 # Audos Workspace DB — Table Ownership & Cleanup Analysis
 
-**Date**: 2026-04-17  
-**Purpose**: Classify all 20 tables as (a) deprecated Audos-app tables we can request cleanup on, (b) Audos platform tables to keep, or (c) ambiguous — needs Otto confirmation before deciding.
-
-The daemon now handles all Throughline-specific workflow. Audos built several apps (Briefing, Guest Prep, Studio, Podcast Setup) that served those workflows before the daemon existed. Those app tables are now stale.
+**Date**: 2026-04-17 (updated after Otto Q10 response)  
+**Purpose**: Classify all 20 tables — what to keep, what to drop, what needs Kane's decision.
 
 ---
 
-## Classification
+## Key Architectural Facts (confirmed by Otto Q10–Q12)
 
-### DEPRECATED — Audos-built app tables, replaced by the daemon
+> **The Audos platform does NOT auto-provision any tables in workspace schemas.** Every table in `ws_8f1ad824_832f_4af8_b77e_ab931a250625` was created by Otto during a conversation, or by a platform feature when Kane used it. The workspace schema is entirely app-scaffold. The Audos platform's own infrastructure tables (`funnel_contacts`, `funnel_events`, `ad_campaigns`, `workspaces`, etc.) live in a **separate platform DB** — not in the workspace schema at all.
 
-All of these belong to specific Audos apps that are no longer in use. The daemon handles everything they did. Safe to request removal.
+> **Only one platform feature writes to a workspace table: Lead Scout → `app_outreach_leads`.** All other Audos platform features (analytics, CRM, ads, payments, carousel, boosters, voiceover, video) use the platform DB — they have no workspace tables and cannot be broken by workspace schema changes.
 
-| Table | Rows | What it was for | What replaced it |
-|---|---|---|---|
-| `app_briefing_podcast_profiles` | 0 | Briefing app — podcast show config | `podcast_config` in daemon |
-| `app_briefing_research_sessions` | 0 | Briefing app — guest research + RoS | `episode_assets` (research type) in daemon |
-| `app_briefing_ros_versions` | 0 | Briefing app — run-of-show version history | `episode_assets` (arc type) in daemon |
-| `app_guest_prep_podcast_profiles` | 1 | Guest Prep app — duplicate podcast config | Same as above (1 stale row — old SG2GG config) |
-| `app_guest_prep_research_sessions` | 0 | Guest Prep app — research per guest | `episode_assets` (research) + `episode_sources` in daemon |
-| `app_guest_prep_ros_versions` | 0 | Guest Prep app — run-of-show version history | Arc in daemon |
-| `app_podcast_setup_profiles` | 0 | Onboarding wizard — show setup | Settings page in Throughline + daemon `podcast_config` |
-| `app_studio_episodes` | 0 | Studio app — episode tracking | `episodes` table in daemon |
-| `app_studio_content` | 0 | Studio app — social content per episode | Future Throughline content pipeline |
-| `app_studio_generated_content` | 0 | Studio app — generated copy | Same |
-| `app_studio_time_tracking` | 0 | Studio app — time-saved metrics | Not replaced (was vanity metric) |
-
-**Total deprecated**: 11 tables, 1 data row (1 stale podcast config from Guest Prep app).
+> **`app_outreach_leads` is user-triggered, not Audos-managed.** Lead Scout runs when Kane asks Otto to find leads. Audos does not write here for its own business purposes. If the table is dropped, Lead Scout recreates it automatically on next use — dropping it loses only the stored rows, not the feature.
 
 ---
 
-### KEEP — Audos platform features, still active or depended on
+## Final Classification
 
-These belong to Audos's platform layer, not to specific Throughline workflow apps. Removing them would break Audos functionality.
+### LEAD SCOUT TABLE — Drop or keep (Kane's call)
 
-| Table | Rows | Why keep |
+| Table | Rows | Notes |
 |---|---|---|
-| `app_speakers` | 3 | Audos's speaker/host registry. John Gonzales (host) + SG2GG (brand) + Jess Thorne (guest). Voice profile system and caption generation reference this. |
-| `app_voice_profiles` | 2 | Audos voice training infrastructure. John + SG2GG brand profiles. Throughline Signature depends on this — training happens through the Audos UI and is stored here. |
-| `app_voice_refinements` | 0 | Stores refinement history when voice profiles are corrected via conversational feedback. Part of the voice platform even if currently empty. |
-| `app_outreach_leads` | 11 | Audos's outreach CRM — generates and manages sales leads. This is Audos running their own feature for Kane, not a Throughline workflow table. |
-| `app_dashboard_activity` | 2 | Audos's activity feed — tracks API calls, events in the workspace. Platform-level logging. |
+| `app_outreach_leads` | 11 | Lead Scout writes here when Kane asks Otto to scout leads. 11 rows from one March 18 run — podcast production agencies as Throughline prospects, all `drafted`, emails never unlocked. Otto confirmed: dropping it loses only these rows; Lead Scout recreates the table on next use. |
 
-**Total to keep**: 5 tables.
+Options: **Drop** (clean slate, Lead Scout still works), **Keep** (preserve the 11 drafted leads), or **Truncate** (wipe stale rows, keep table structure).
 
 ---
 
-### AMBIGUOUS — Needs Otto to classify before deciding
+### DEPRECATED — Safe to DROP (clearly dead, daemon supersedes)
 
-These could belong to either the deprecated app layer OR the Audos platform depending on how Audos architected them.
+All created by Otto as scaffolding for Audos-built apps that are now fully replaced by the daemon.
 
-| Table | Rows | Why ambiguous |
+| Table | Rows | What it was for |
 |---|---|---|
-| `app_reels` | 1 | One draft reel (Jess Thorne, "Why DonorsChoose Exists"). Could be: (a) a deprecated Reels app that was built for Throughline, or (b) Audos's Reels platform feature for social clips. If (b), removing it breaks Audos's reel pipeline. |
-| `app_reel_captions` | 0 | Caption content attached to reels. Same ambiguity as `app_reels`. If Audos's caption product reads from this, keep. |
-| `app_generated_captions` | 0 | General-purpose caption generation table. Could be used by the Audos captions feature (platform) or was only used by deprecated studio/reel workflows. |
-| `app_linked_references` | 2 | Stores fetched URL content (both rows are fetches of trythroughline.com from 2026-03-31). If this was the Briefing/Guest Prep app's research cache, it's deprecated. If it's a shared platform cache, keep. |
+| `app_briefing_podcast_profiles` | 0 | Briefing app — podcast show config |
+| `app_briefing_research_sessions` | 0 | Briefing app — guest research + RoS |
+| `app_briefing_ros_versions` | 0 | Briefing app — run-of-show version history |
+| `app_guest_prep_podcast_profiles` | 1 | Guest Prep app — duplicate podcast config (1 stale SG2GG row) |
+| `app_guest_prep_research_sessions` | 0 | Guest Prep app — research per guest |
+| `app_guest_prep_ros_versions` | 0 | Guest Prep app — run-of-show version history |
+| `app_podcast_setup_profiles` | 0 | Onboarding wizard — show setup |
+| `app_studio_episodes` | 0 | Studio app — episode tracking |
+| `app_studio_content` | 0 | Studio app — social content per episode |
+| `app_studio_generated_content` | 0 | Studio app — generated copy |
+| `app_studio_time_tracking` | 0 | Studio app — time-saved metrics (vanity) |
 
-**Total ambiguous**: 4 tables.
+**Count**: 11 tables, 1 data row.
+
+---
+
+### DROP — App-scaffold, confirmed safe by Otto (Q11)
+
+Otto confirmed no active Audos platform feature reads from any of these. The only code that read them was the deprecated Throughline mini-apps (Briefing, Studio, Signature) — all superseded by the daemon.
+
+| Table | Rows | Otto confirmation |
+|---|---|---|
+| `app_speakers` | 3 | No platform reads. Created for transcript parsing in old apps. |
+| `app_voice_profiles` | 2 | No platform reads. Created for Signature concept, untrained, never connected to platform voice features. |
+| `app_voice_refinements` | 0 | No platform reads. Training loop that was never implemented. |
+| `app_dashboard_activity` | 2 | No platform reads. Activity feed feature in old dashboard app. |
+| `app_reels` | 1 | No platform reads. Studio app only. |
+| `app_reel_captions` | 0 | No platform reads. Paired with app_reels. |
+| `app_generated_captions` | 0 | No platform reads. Empty. |
+| `app_linked_references` | 2 | No platform reads. URL cache from Briefing/Guest Prep only. |
+
+**Count**: 8 tables.
 
 ---
 
@@ -66,32 +72,53 @@ These could belong to either the deprecated app layer OR the Audos platform depe
 
 | Category | Count | Tables |
 |---|---|---|
-| Deprecated (request removal) | 11 | briefing_*, guest_prep_*, podcast_setup, studio_* |
-| Keep (Audos platform) | 5 | speakers, voice_profiles, voice_refinements, outreach_leads, dashboard_activity |
-| Confirm with Otto | 4 | reels, reel_captions, generated_captions, linked_references |
+| Kane's call — Lead Scout feature table | 1 | `app_outreach_leads` (drop or keep; feature survives either way) |
+| Drop — deprecated app tables | 11 | briefing_*, guest_prep_*, podcast_setup, studio_* |
+| Drop — app-scaffold, confirmed safe (Otto Q11) | 8 | speakers, voice_*, dashboard_activity, reels, reel_captions, generated_captions, linked_references |
+| **Total confirmed drops** | **19** | Everything except `app_outreach_leads` |
+
+After cleanup: workspace schema contains only `app_outreach_leads` (or zero tables if that's dropped too). No other Audos platform feature has a workspace table.
 
 ---
 
-## Questions for Otto (append to the existing Otto prompt)
+## DROP SQL (ready to run)
 
-1. **The 11 deprecated app tables** (Briefing, Guest Prep, Studio, Podcast Setup) — these were created by Audos apps that are no longer in use. The daemon now handles all of that workflow. Can we drop these tables from the workspace schema, or does Audos need to handle the cleanup? If Audos needs to handle it, can we request that?
+**NOTE**: Otto's example SQL omits the `app_` prefix — his SQL would fail. All table names in the actual DB include `app_`. The corrected SQL below is verified against the live schema.
 
-2. **`app_reels` / `app_reel_captions` / `app_generated_captions`** — are these part of an Audos platform feature (the Reels/Captions product) that Audos's own systems write to, or were they created exclusively for a specific app that's now deprecated?
+```sql
+-- Full workspace cleanup — drops all 19 app-scaffold tables.
+-- Leaves only app_outreach_leads (Lead Scout / platform-active).
+-- Confirmed safe by Otto Q8, Q10, Q11 (2026-04-17).
 
-3. **`app_linked_references`** — is this a shared platform cache used by multiple Audos features, or was it only used by the Briefing/Guest Prep apps for research URL fetching?
-
-4. **If we can drop tables ourselves**: what's the safe process? Can we run `DROP TABLE` directly, or is there a migration/API path that Audos prefers?
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_briefing_podcast_profiles;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_briefing_research_sessions;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_briefing_ros_versions;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_guest_prep_podcast_profiles;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_guest_prep_research_sessions;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_guest_prep_ros_versions;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_podcast_setup_profiles;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_studio_episodes;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_studio_content;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_studio_generated_content;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_studio_time_tracking;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_speakers;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_voice_profiles;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_voice_refinements;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_dashboard_activity;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_reels;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_reel_captions;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_generated_captions;
+DROP TABLE IF EXISTS ws_8f1ad824_832f_4af8_b77e_ab931a250625.app_linked_references;
+```
 
 ---
 
 ## What this means for Atlas
 
-Atlas manages the **daemon's Postgres** (Throughline's own DB), not the Audos workspace DB. These are two separate databases. Atlas does not need to know about or manage anything in the Audos schema.
+Atlas manages the **daemon's Postgres** — not the Audos workspace DB. These are two separate databases. Atlas does not touch anything in the Audos schema.
 
-The cleanup action here is not an Atlas migration — it's either:
-- A direct `DROP TABLE` in the Audos workspace schema (if Otto confirms we have that right), or
-- A support request to the Audos team to clean up deprecated app tables.
-
-Once the Audos workspace is clean (platform tables only), the two DBs have clear ownership:
-- **Audos workspace DB**: voice profiles, speakers, outreach, activity — Audos-managed.
+Once the Audos workspace is cleaned up:
+- **Audos workspace DB**: `app_outreach_leads` only (Lead Scout managed). All else is ours to drop.
 - **Daemon DB (throughline_*)**: episodes, contacts, communications, arc, research, sources — Throughline-owned, Atlas-managed.
+
+New tables in the workspace schema (e.g., `ext_episode_sources`) go here only if there's a reason to co-locate with Audos data. Currently no such reason exists — the daemon DB is the right home for Throughline-specific relational data.

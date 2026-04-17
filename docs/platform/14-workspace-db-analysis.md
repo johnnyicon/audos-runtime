@@ -117,9 +117,9 @@ All of this workflow now lives in Throughline. The daemon handles research, arc 
 
 ---
 
-## Write permissions (to be confirmed with Otto)
+## Write permissions (confirmed by Otto, 2026-04-17)
 
-The DB role `ws_dev_8f1ad824832f4af8b77e` was generated as a dev credential. We have not tested `CREATE TABLE` or `INSERT`. Assume read/write on existing tables; table creation needs confirmation.
+Full read/write/DDL on the workspace schema. `CREATE TABLE`, `INSERT`, `UPDATE`, `DELETE`, `DROP TABLE` all confirmed. New daemon-owned tables should use `throughline_` prefix.
 
 ---
 
@@ -128,8 +128,16 @@ The DB role `ws_dev_8f1ad824832f4af8b77e` was generated as a dev credential. We 
 | Question | Answer from data |
 |---|---|
 | Should we sync contacts with app_outreach_leads? | No — different populations (B2B sales vs. podcast guests) |
-| Is Audos the source of truth for podcast config? | No — daemon is. Audos's copy is stale. |
-| Can we use app_speakers for guest management? | No overlap — app_speakers only has John + brand + one guest. Daemon contacts table is the right home. |
-| Should we create tables in this schema? | Blocked on convention confirmation (need Otto). |
-| Is voice training data available here? | Schema yes, data no — profiles are empty. |
-| Which Audos apps does Kane actually use? | None of the workflow apps. Throughline has replaced Briefing, Guest Prep, and Studio entirely. |
+| Is Audos the source of truth for podcast config? | No — daemon is. Audos's copy was stale and has been dropped. |
+| Can we use app_speakers for guest management? | Moot — app_speakers was dropped (2026-04-17 cleanup). Daemon contacts table is the right home. |
+| Should we create tables in this schema? | Yes — use `throughline_` prefix. Managed via Atlas `audos-workspace` env. |
+| Is voice training data available here? | app_voice_profiles was dropped — profiles were empty and never connected to any active feature. |
+| Which Audos apps does Kane actually use? | None of the workflow apps. All 19 app-scaffold tables dropped. Only `app_outreach_leads` remains (Lead Scout). |
+
+---
+
+## Cleanup outcome (2026-04-17)
+
+19 of 20 workspace tables dropped via Atlas migration `20260417000000_cleanup_deprecated_app_tables`. `app_outreach_leads` kept — it's the Lead Scout feature table and contains 11 drafted Throughline sales prospects (podcast production agencies). Lead Scout is user-triggered; Otto confirmed Audos does not write here for its own business purposes.
+
+See `15-workspace-db-table-ownership.md` for full classification and Otto confirmation trail.

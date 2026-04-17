@@ -2,9 +2,11 @@
 
 Authoritative reference for the Audos workspace Postgres schema — how tables are created, who writes to them, how to integrate from off-platform, and the known gotchas.
 
-**Source:** Consolidated from Otto's `AUDOS-WORKSPACE-DATABASE-ARCHITECTURE` (2026-04-03) plus Throughline-side discovery (2026-04-16). Raw Otto artifact preserved at `references/otto-workspace-database-architecture-2026-04-03.md`.
+**Source:** Consolidated from Otto's `AUDOS-WORKSPACE-DATABASE-ARCHITECTURE` (2026-04-03) plus Throughline-side discovery (2026-04-16) and Otto Q&A session (2026-04-17). Raw Otto artifact preserved at `references/otto-workspace-database-architecture-2026-04-03.md`.
 
 **Related:** [`AI-HOOK-CAPABILITY-MATRIX.md`](../AI-HOOK-CAPABILITY-MATRIX.md) — both are workspace-scoped surfaces and share the same workspace identity model.
+
+**Table ownership analysis:** `15-workspace-db-table-ownership.md` — full classification of all 20 workspace tables, what was dropped, what was kept, and why.
 
 ---
 
@@ -14,6 +16,14 @@ Authoritative reference for the Audos workspace Postgres schema — how tables a
 - **Isolation:** Schema-per-workspace multi-tenancy
 - **Throughline workspace schema:** `ws_8f1ad824_832f_4af8_b77e_ab931a250625`
 - **Workspace ID surface (AI hook URL):** `workspace-351699`
+
+### Critical architectural distinction — workspace schema vs. platform DB
+
+**The workspace schema is entirely app-scaffold.** The Audos platform does not auto-provision tables here. Every table exists because Otto created it during a conversation, or because a platform feature wrote to it when Kane used it.
+
+**Audos platform infrastructure lives in a separate platform DB**, not in the workspace schema. Tables like `funnel_contacts`, `funnel_events`, `ad_campaigns`, `slide_decks`, `boosters`, `session_recordings`, and `payments` are in Audos's own DB. You access them through Otto tools (`query_contacts`, `get_funnel_metrics`, etc.) — they are never directly queryable via the workspace credentials.
+
+**Only one Audos platform feature writes to the workspace schema: Lead Scout → `app_outreach_leads`.** All other platform features (analytics, CRM, ads, payments, carousel, boosters, voiceover, video, image generation) use the platform DB exclusively. Dropping any workspace table other than `app_outreach_leads` cannot break any Audos platform feature.
 
 ### Access methods
 
@@ -100,19 +110,17 @@ Not platform-managed. You choose the format (email, UUID, slug). Throughline use
 
 ## Data flow — who writes what
 
-| Table | Primary writer | Secondary writers | Notes |
-|---|---|---|---|
-| `voice_profiles` | Otto (onboarding) | Mini-apps, db-api | |
-| `speakers` | Otto | Mini-apps, db-api | Parsed from transcripts |
-| `reels` | Mini-apps | Otto, db-api | User-created clips |
-| `reel_captions` | Otto (AI) | Mini-apps | Generated captions |
-| `outreach_leads` | **Platform (Lead Scout)** | Otto (status updates) | Agentic CRM — see deep dive |
-| `linked_references` | Otto (web fetch cache) | db-api | May create duplicates |
-| `dashboard_activity` | Otto, mini-apps, db-api | Any | Append-only activity log |
+After the 2026-04-17 cleanup, the only remaining workspace table is:
 
-**No workspace tables are read-only.** Direct SQL has full write. But watch for concurrent writers on `outreach_leads.status`/`notes` (Lead Scout) and `linked_references` (Otto's cache).
+| Table | Primary writer | Notes |
+|---|---|---|
+| `app_outreach_leads` | **Lead Scout (platform feature)** | Writes when Kane asks Otto to scout leads. User-initiated — Audos does not write here for its own purposes. Otto confirmed: if dropped, Lead Scout recreates the table on next use. See deep dive below. |
 
-**Direct SQL bypasses platform side-effects** — validation, `updated_at` triggers if any, anything the db-api layer adds. Replicate that logic in your daemon when needed (especially `updated_at`).
+All other workspace tables from the original 20 were app-scaffold (created by Otto for deprecated Throughline apps) and have been dropped via Atlas migration `20260417000000_cleanup_deprecated_app_tables`.
+
+**No workspace tables are read-only.** Direct SQL has full write. Watch for concurrent writes on `app_outreach_leads.status`/`notes` if Lead Scout is running.
+
+**Direct SQL bypasses platform side-effects** — always set `updated_at = NOW()` explicitly on UPDATEs; don't rely on triggers.
 
 ---
 
@@ -329,37 +337,29 @@ Only works if every writer (including direct SQL) sets `updated_at` on UPDATE �
 
 ## Complete table reference
 
-### Per Otto's doc (2026-04-03) — 17 workspace tables
+### Current state — post-cleanup (2026-04-17)
+
+The workspace schema was cleaned up via Atlas migration `20260417000000_cleanup_deprecated_app_tables`. 19 app-scaffold tables were dropped. One table remains:
 
 | Table | Rows | Purpose | Key columns |
 |---|---|---|---|
-| `voice_profiles` | 2 | Voice fingerprints for hosts/brands | `name`, `type`, `is_trained`, `long_form_samples` |
-| `speakers` | 3 | Speaker registry for transcripts | `name`, `role`, `voice_profile_id` |
-| `reels` | 1 | Social media clips | `transcript`, `status`, `scheduled_date` |
-| `reel_captions` | 0 | AI-generated captions | `reel_id`, `platform`, `caption` |
-| `outreach_leads` | 11 | Lead Scout CRM | `relevance_score`, `ai_reason`, `status` |
-| `linked_references` | 2 | Cached web pages | `url`, `content`, `fetched_at` |
-| `dashboard_activity` | 3 | Activity log | `activity_type`, `title`, `metadata` |
-| `guest_prep_podcast_profiles` | 1 | Podcast identity config | `name`, `tone`, `brand_voice` |
-| `guest_prep_research_sessions` | 0 | Guest research data | `guest_name`, `transcript`, `research_package` |
-| `guest_prep_ros_versions` | 0 | Run of Show versions | `version`, `content` |
-| `briefing_podcast_profiles` | 0 | Briefing app profiles | `name`, `description` |
-| `briefing_research_sessions` | 0 | Briefing sessions | `guest_name`, `briefing_data` |
-| `voice_refinements` | 0 | Voice model training data | `voice_profile_id`, `feedback` |
-| `studio_episodes` | 0 | Episode drops | `title`, `published_at` |
-| `studio_time_tracking` | 0 | Automation metrics | `time_saved_minutes` |
-| `studio_generated_content` | 0 | Generated platform content | `platform`, `content`, `status` |
-| `podcast_setup_profiles` | 0 | Setup wizard data | `name`, `branding` |
+| `app_outreach_leads` | 11 | Lead Scout CRM — AI-scouted Throughline sales prospects | `name`, `company`, `title`, `relevance_score`, `ai_reason`, `status`, `notes` (draft email), `outreach_batch_id` |
 
-### Per live discovery (2026-04-16) — 20 tables, `app_*` prefix observed
+**All other tables were dropped.** See `15-workspace-db-table-ownership.md` for the full classification rationale and Otto confirmations.
 
-Tables seen via direct SQL on `ws_8f1ad824_832f_4af8_b77e_ab931a250625`:
+### Historical — what was dropped (2026-04-17)
 
-**With data:** `app_outreach_leads` (11), `app_speakers` (3), `app_voice_profiles` (2), `app_dashboard_activity` (2), `app_linked_references` (2), `app_guest_prep_podcast_profiles` (1), `app_reels` (1).
+These 19 tables were confirmed app-scaffold (created by Otto for deprecated Throughline apps) with no active Audos platform feature dependency:
 
-**Empty:** `app_briefing_podcast_profiles`, `app_briefing_research_sessions`, `app_briefing_ros_versions`, `app_generated_captions`, `app_guest_prep_research_sessions`, `app_guest_prep_ros_versions`, `app_podcast_setup_profiles`, `app_reel_captions`, `app_studio_content`, `app_studio_episodes`, `app_studio_generated_content`, `app_studio_time_tracking`, `app_voice_refinements`.
-
-**Before depending on exact table names, re-run `\dt ws_xxx.*` against the live workspace.**
+| Group | Tables dropped |
+|---|---|
+| Briefing app | `app_briefing_podcast_profiles`, `app_briefing_research_sessions`, `app_briefing_ros_versions` |
+| Guest Prep app | `app_guest_prep_podcast_profiles`, `app_guest_prep_research_sessions`, `app_guest_prep_ros_versions` |
+| Studio app | `app_studio_episodes`, `app_studio_content`, `app_studio_generated_content`, `app_studio_time_tracking` |
+| Podcast Setup wizard | `app_podcast_setup_profiles` |
+| Voice/speaker features | `app_speakers`, `app_voice_profiles`, `app_voice_refinements` |
+| Reels/captions | `app_reels`, `app_reel_captions`, `app_generated_captions` |
+| Misc app-scaffold | `app_dashboard_activity`, `app_linked_references` |
 
 ---
 
@@ -396,13 +396,14 @@ Validation, trigger-driven timestamp bumps, audit logging — if the platform ad
 
 ## Key takeaways for the Throughline daemon
 
-1. **Direct SQL is fully supported** — read and write freely within the workspace schema.
-2. **Prefix new daemon-owned tables** with `go_*` or `ext_*` to keep ownership visible.
-3. **Set `session_id = NULL`** on daemon-written rows intended as shared workspace data.
-4. **Always set `updated_at = NOW()`** on UPDATEs — don't rely on triggers.
-5. **Use a sync table** (e.g. `go_sync_state`) to track what's been mirrored between Audos and the daemon's own Postgres.
-6. **Avoid concurrent writes** to rows the platform also writes (`outreach_leads.status`/`notes`, `linked_references`). Partition by row or table where possible.
-7. **Throughline's own data lives in the daemon's Postgres** (`maykapal.public.*`) — episodes, contacts, communications, sources, podcast_config, assets. The Audos workspace schema is a separate surface containing Audos-platform data and agentic CRM state (Lead Scout, etc.).
+1. **The workspace schema is app-scaffold, not platform infrastructure.** Only `app_outreach_leads` is written by an Audos platform feature (Lead Scout). Everything else is yours to create and manage.
+2. **Audos platform features use a separate platform DB** — analytics, CRM, ads, payments, carousel, boosters, voiceover, image/video generation all store data there. They are not accessible via workspace credentials; use Otto tools to read/write them.
+3. **Direct SQL is fully supported** — read and write freely within the workspace schema.
+4. **Prefix new daemon-owned tables** with `throughline_` (or `ext_`) to keep ownership visible. Managed via Atlas `audos-workspace` env in `throughline-daemon/atlas.hcl`.
+5. **Set `session_id = NULL`** on daemon-written rows intended as shared workspace data.
+6. **Always set `updated_at = NOW()`** on UPDATEs — don't rely on triggers.
+7. **Avoid concurrent writes** to `app_outreach_leads.status`/`notes` if Lead Scout is also running.
+8. **Throughline's own data lives in the daemon's Postgres** — episodes, contacts, communications, sources, podcast_config, assets. The Audos workspace schema holds only Lead Scout data (`app_outreach_leads`) and any future `throughline_*` tables explicitly created by the daemon.
 
 ---
 
