@@ -22,6 +22,7 @@ Do not load all docs upfront. Read the specific file for the task at hand.
 | Understand the platform architecture | `/Users/kanekoa/Workspace/audos-platform/docs/platform/02-platform-overview.md` |
 | Understand workspace folder structure | `/Users/kanekoa/Workspace/audos-platform/docs/throughline/README.md` |
 | Understand the development workflow | `/Users/kanekoa/Workspace/audos-platform/docs/platform/04-development-workflow.md` |
+| **Deploy a React app via GitHub Dev Mode** (CDN deps, routing, platform detection) | `/Users/kanekoa/Workspace/audos-platform/docs/platform/16-github-dev-mode-app-deployment.md` |
 | Create or modify a server function | `/Users/kanekoa/Workspace/audos-platform/docs/platform/07-api-development-guide.md` |
 | Use runtime globals (`db`, `platform`, `fetch`, `respond`) | `/Users/kanekoa/Workspace/audos-platform/docs/platform/08-server-function-runtime.md` |
 | Copy a server function template | `/Users/kanekoa/Workspace/audos-platform/docs/platform/09-server-function-templates.md` |
